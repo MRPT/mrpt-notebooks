@@ -571,7 +571,7 @@ def _(
             [
                 mo.md(dh_table(user_links, user_q)),
                 mo.md(
-                    f"Tool frame in the base frame, $T = A_1 \\oplus \\dots \\oplus A_{len(user_links)}$: "
+                    f"Tool frame in the base frame, $T = A_1 \\oplus \\dots \\oplus A_{len(user_links)}$:\n\n"
                     f"$${bmatrix(np.asarray(_tool.getHomogeneousMatrix()))}$$"
                 ),
                 scene_figure(
