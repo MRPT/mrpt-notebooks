@@ -21,11 +21,12 @@ def _(mo):
 
     This notebook uses the [MRPT](https://www.mrpt.org/) Python wheel
     (`pip install mrpt3`) to build the pose graph of a robot that drives
-    through a small city-block route and revisits some places. It uses two
-    MRPT modules:
+    through a small city-block route and revisits some places, and then
+    optimizes it. It uses three MRPT modules:
 
     - `mrpt.poses`: SE(2) poses (`CPose2D`), their composition `a + b` and relative pose `a - b`.
     - `mrpt.graphs`: the pose graph (`CNetworkOfPoses2D`), its spanning-tree estimate and shortest paths.
+    - `mrpt.graphslam`: nonlinear least-squares optimization of the graph (`optimize_graph_spa_levmarq`).
 
     In graph SLAM, each robot pose is a **node** and each relative measurement
     is an **edge**: odometry links consecutive poses, and a **loop closure**
@@ -45,9 +46,21 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
 
-    from mrpt.graphs import CNetworkOfPoses2D
-    from mrpt.poses import CPose2D
-    return CNetworkOfPoses2D, CPose2D, Path, mo, np, plt, tempfile
+    from mrpt.graphs import CNetworkOfPoses2D, CNetworkOfPoses2DInf
+    from mrpt.graphslam import optimize_graph_spa_levmarq
+    from mrpt.poses import CPose2D, CPosePDFGaussianInf
+    return (
+        CNetworkOfPoses2D,
+        CNetworkOfPoses2DInf,
+        CPose2D,
+        CPosePDFGaussianInf,
+        Path,
+        mo,
+        np,
+        optimize_graph_spa_levmarq,
+        plt,
+        tempfile,
+    )
 
 
 @app.cell(hide_code=True)
@@ -290,25 +303,137 @@ def _(dead_reckoning, gt, hops, np, plt, tree_estimate):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Next step: optimization
+    ## 4. Optimization: spreading the error over the loops
 
     The final step of graph SLAM is a nonlinear least-squares optimization
-    (e.g. Levenberg-Marquardt) that moves all nodes at once to satisfy every
-    edge as well as possible, spreading the error over the whole loop instead
-    of concentrating it on a few edges. MRPT implements it in C++
-    (`mrpt::graphslam::optimize_spa_levmarq`), but the `mrpt3` Python wheel
-    does not expose it yet. The graph can be saved in the standard
-    [g2o](https://github.com/RainerKuemmerle/g2o) text format, readable by
-    MRPT's `graphslam-engine` application and other graph optimizers:
+    that moves all nodes at once to satisfy every edge as well as possible.
+    Each edge residual is weighted by the **information matrix** (inverse
+    covariance) of its measurement, so precise loop closures pull harder than
+    noisy odometry. In MRPT, edges with uncertainty are `CPosePDFGaussianInf`
+    objects in a `CNetworkOfPoses2DInf` graph, and
+    `optimize_graph_spa_levmarq()` runs Sparse Pose Adjustment with
+    Levenberg-Marquardt, starting from the spanning-tree estimate.
     """)
     return
 
 
 @app.cell
-def _(Path, graph, mo, tempfile):
+def _(
+    CNetworkOfPoses2DInf,
+    CPosePDFGaussianInf,
+    loops,
+    noise_phi,
+    noise_xy,
+    np,
+    odometry,
+    optimize_graph_spa_levmarq,
+):
+    def information(sigma_xy, sigma_phi):
+        """Diagonal information matrix of a measurement (floored to avoid infinite weights)."""
+        _s = np.maximum([sigma_xy, sigma_xy, sigma_phi], [0.005, 0.005, np.radians(0.1)])
+        return np.diag(1.0 / _s**2)
+
+    _info_odo = information(noise_xy.value / 100, np.radians(noise_phi.value))
+    _info_loop = information(0.05, np.radians(1.0))
+
+    graph_inf = CNetworkOfPoses2DInf()
+    for _i, _j, _z in odometry:
+        graph_inf.insertEdge(_i, _j, CPosePDFGaussianInf(_z, _info_odo))
+    for _i, _j, _z in loops:
+        graph_inf.insertEdge(_i, _j, CPosePDFGaussianInf(_z, _info_loop))
+    graph_inf.root = 0
+    graph_inf.dijkstra_nodes_estimate()  # initial guess
+
+    # Record the total squared error after each iteration:
+    sq_error_history = []
+    opt_result = optimize_graph_spa_levmarq(
+        graph_inf,
+        extra_params={"max_iterations": 100},
+        feedback=lambda g, it, max_it, err: sq_error_history.append(err),
+    )
+    optimized = [graph_inf.getNodePose(i) for i in graph_inf.getNodeIDs()]
+    return graph_inf, opt_result, optimized, sq_error_history
+
+
+@app.cell(hide_code=True)
+def _(dead_reckoning, gt, loops, mo, np, opt_result, optimized, tree_estimate):
+    def _rmse(poses):
+        return np.sqrt(np.mean([(p.x - g.x) ** 2 + (p.y - g.y) ** 2 for p, g in zip(poses, gt)]))
+
+    mo.md(
+        f"""
+    Levenberg-Marquardt stopped after **{opt_result.num_iters}** iterations, with a total
+    squared (Mahalanobis) error of **{opt_result.final_total_sq_error:.1f}**.
+
+    | Estimate | Position RMSE vs. ground truth (m) |
+    |---|---|
+    | Dead reckoning (odometry only) | {_rmse(dead_reckoning):.2f} |
+    | Spanning tree (`dijkstra_nodes_estimate`) | {_rmse(tree_estimate):.2f} |
+    | Optimized (`optimize_graph_spa_levmarq`) | **{_rmse(optimized):.2f}** |
+
+    {"With no loop closures there is nothing to correct: the optimum is dead reckoning." if not loops else ""}
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(dead_reckoning, gt, np, optimized, plt, sq_error_history, tree_estimate, xy):
+    def _errors(poses):
+        return [np.hypot(p.x - g.x, p.y - g.y) for p, g in zip(poses, gt)]
+
+    _opt = np.array([[p.x, p.y] for p in optimized])
+    fig3, (ax_map, ax_err, ax_conv) = plt.subplots(
+        1, 3, figsize=(13, 4.6), gridspec_kw={"width_ratios": [1.3, 1, 0.6]}
+    )
+    ax_map.plot(*xy.T, color="0.8", lw=4, zorder=0, label="Ground truth")
+    ax_map.plot(*_opt.T, ".-", color="tab:purple", ms=3, lw=1, label="Optimized")
+    ax_map.plot(0, 0, "ks", ms=7, zorder=5)
+    ax_map.set_aspect("equal")
+    ax_map.grid(alpha=0.3)
+    ax_map.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False)
+    ax_map.set_title("Optimized pose graph")
+
+    ax_err.plot(_errors(dead_reckoning), color="tab:blue", label="Dead reckoning")
+    ax_err.plot(_errors(tree_estimate), color="tab:green", label="Spanning tree")
+    ax_err.plot(_errors(optimized), color="tab:purple", label="Optimized")
+    ax_err.set_xlabel("Node index (time)")
+    ax_err.set_ylabel("Position error (m)")
+    ax_err.grid(alpha=0.3)
+    ax_err.legend(fontsize=8, loc="upper left")
+    ax_conv.plot(sq_error_history, ".-", color="k", ms=4, lw=1)
+    if sq_error_history and min(sq_error_history) > 0:
+        ax_conv.set_yscale("log")
+    ax_conv.set_xlabel("Iteration")
+    ax_conv.set_title("Total squared error", fontsize=10)
+    ax_conv.grid(alpha=0.3)
+    fig3.tight_layout()
+    fig3
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The optimizer has no single "seam" left: the inconsistency of each loop is
+    shared by all its edges, in proportion to their uncertainty, so the error
+    no longer jumps where two branches of the spanning tree meet.
+
+    ## 5. Saving the graph
+
+    Pose graphs can be saved in the standard
+    [g2o](https://github.com/RainerKuemmerle/g2o) text format, readable by
+    MRPT's `graphslam-engine` application and other graph optimizers. Edges
+    with uncertainty include the upper triangle of their information matrix:
+    """)
+    return
+
+
+@app.cell
+def _(Path, graph_inf, mo, tempfile):
     with tempfile.TemporaryDirectory() as _tmp:
         _file = Path(_tmp) / "pose_graph.g2o"
-        graph.saveToTextFile(str(_file))
+        graph_inf.saveToTextFile(str(_file))
         g2o_lines = _file.read_text().splitlines()
 
     _vertices = [line for line in g2o_lines if line.startswith("VERTEX")]

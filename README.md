@@ -15,14 +15,15 @@ below).
 | | [Odometry uncertainty: Gaussian vs. particles](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/pose_uncertainty.py) | `mrpt.poses`, `mrpt.obs`, `mrpt.slam`, `mrpt.bayes` |
 | | [Rigid transformations from point correspondences](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/rigid_transform_estimation.py) | `mrpt.tfest`, `mrpt.poses` |
 | **Registration and SLAM** | [2D scan matching with ICP](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/icp_scan_matching.py) | `mrpt.slam`, `mrpt.maps`, `mrpt.poses` |
-| | [Pose graphs and loop closures](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/pose_graph_slam.py) | `mrpt.graphs`, `mrpt.poses` |
+| | [Pose graphs, loop closures and graph SLAM optimization](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/pose_graph_slam.py) | `mrpt.graphs`, `mrpt.graphslam`, `mrpt.poses` |
 | | [Monte Carlo localization with a particle filter](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/monte_carlo_localization.py) | `mrpt.slam`, `mrpt.bayes`, `mrpt.maps`, `mrpt.obs` |
 | **Maps** | [Occupancy grid mapping from laser scans](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/occupancy_grid_mapping.py) | `mrpt.maps`, `mrpt.obs` |
 | | [3D metric maps from a point cloud](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/point_cloud_maps.py) | `mrpt.maps`, `mrpt.obs` |
 | **Robot arms** | [Denavit-Hartenberg parameters](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/dh_parameters.py) | `mrpt.poses` |
 | | [Forward kinematics, workspace and Jacobian](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/forward_kinematics.py) | `mrpt.poses` |
 | | [Inverse kinematics: closed form and numerical](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/inverse_kinematics.py) | `mrpt.poses` |
-| **Navigation and kinematics** | [Trajectory families and TP-Space (PTGs)](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/ptg_trajectories.py) | `mrpt.nav` |
+| **Navigation and kinematics** | [Shortest paths in graphs (Dijkstra)](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/dijkstra_shortest_paths.py) | `mrpt.graphs`, `mrpt.poses` |
+| | [Trajectory families and TP-Space (PTGs)](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/ptg_trajectories.py) | `mrpt.nav` |
 | | [Mobile robot kinematics: differential drive vs. holonomic](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/vehicle_kinematics.py) | `mrpt.kinematics`, `mrpt.obs` |
 | **Sensors and geodesy** | [Camera models and lens distortion](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/camera_models.py) | `mrpt.img`, `mrpt.obs` |
 | | [Geodetic coordinates: WGS84, ECEF, ENU and UTM](https://molab.marimo.io/github/MRPT/mrpt-notebooks/blob/main/notebooks/geodetic_coordinates.py) | `mrpt.topography` |
